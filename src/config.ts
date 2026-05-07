@@ -9,29 +9,32 @@ const Schema = z.object({
   LOG_LEVEL: z.enum(["error", "warn", "info", "debug"]).default("info")
 });
 
+type Parsed = z.infer<typeof Schema>;
+
 export type Config = {
-  apiKey: string;
-  workspaceId: string;
-  baseUrl: string;
-  reportsBaseUrl: string;
-  port: number;
-  logLevel: "error" | "warn" | "info" | "debug";
+  apiKey: Parsed["CLOCKIFY_API_KEY"];
+  workspaceId: Parsed["CLOCKIFY_WORKSPACE_ID"];
+  baseUrl: Parsed["CLOCKIFY_BASE_URL"];
+  reportsBaseUrl: Parsed["CLOCKIFY_REPORTS_BASE_URL"];
+  port: Parsed["PORT"];
+  logLevel: Parsed["LOG_LEVEL"];
 };
 
 export function loadConfig(): Config {
   const parsed = Schema.safeParse(process.env);
   if (!parsed.success) {
-    const first = parsed.error.issues[0]!;
+    const first = parsed.error.issues[0];
+    if (!first) throw new Error("invalid config: unknown error");
     const path = first.path.join(".");
     throw new Error(`invalid config: ${path}: ${first.message}`);
   }
-  const e = parsed.data;
+  const env = parsed.data;
   return {
-    apiKey: e.CLOCKIFY_API_KEY,
-    workspaceId: e.CLOCKIFY_WORKSPACE_ID,
-    baseUrl: e.CLOCKIFY_BASE_URL,
-    reportsBaseUrl: e.CLOCKIFY_REPORTS_BASE_URL,
-    port: e.PORT,
-    logLevel: e.LOG_LEVEL
+    apiKey: env.CLOCKIFY_API_KEY,
+    workspaceId: env.CLOCKIFY_WORKSPACE_ID,
+    baseUrl: env.CLOCKIFY_BASE_URL,
+    reportsBaseUrl: env.CLOCKIFY_REPORTS_BASE_URL,
+    port: env.PORT,
+    logLevel: env.LOG_LEVEL
   };
 }

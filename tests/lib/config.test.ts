@@ -51,4 +51,26 @@ describe("loadConfig", () => {
     process.env.LOG_LEVEL = "verbose";
     expect(() => loadConfig()).toThrow(/LOG_LEVEL/);
   });
+
+  it("rejects an invalid CLOCKIFY_BASE_URL", () => {
+    process.env.CLOCKIFY_API_KEY = "k";
+    process.env.CLOCKIFY_WORKSPACE_ID = "w";
+    process.env.CLOCKIFY_BASE_URL = "not-a-url";
+    expect(() => loadConfig()).toThrow(/CLOCKIFY_BASE_URL/);
+  });
+
+  it("rejects an empty CLOCKIFY_API_KEY", () => {
+    process.env.CLOCKIFY_API_KEY = "";
+    process.env.CLOCKIFY_WORKSPACE_ID = "w";
+    expect(() => loadConfig()).toThrow(/CLOCKIFY_API_KEY/);
+  });
+
+  it("rejects PORT=0 / negative / non-integer / non-numeric", () => {
+    process.env.CLOCKIFY_API_KEY = "k";
+    process.env.CLOCKIFY_WORKSPACE_ID = "w";
+    for (const bad of ["0", "-1", "3.14", "abc"]) {
+      process.env.PORT = bad;
+      expect(() => loadConfig(), `PORT=${bad}`).toThrow(/PORT/);
+    }
+  });
 });
