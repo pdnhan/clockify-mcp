@@ -125,4 +125,41 @@ describe("createClient", () => {
     });
     expect(url).toBe("https://api.test/api/v1/x?page=2&name=foo+bar");
   });
+
+  it("sends JSON body and Content-Type when args.body is set", async () => {
+    let ct: string | null = null;
+    let payload: unknown = null;
+    server.use(
+      http.post("https://api.test/api/v1/x", async ({ request }) => {
+        ct = request.headers.get("Content-Type");
+        payload = await request.json();
+        return HttpResponse.json({ ok: true });
+      })
+    );
+    const client = createClient(config);
+    await client.request({
+      host: "api",
+      method: "POST",
+      path: "/x",
+      body: { a: 1, nested: { b: "two" } }
+    });
+    expect(ct).toBe("application/json");
+    expect(payload).toEqual({ a: 1, nested: { b: "two" } });
+  });
+
+  it("omits Content-Type and body when args.body is undefined", async () => {
+    let ct: string | null = null;
+    let raw: string | null = null;
+    server.use(
+      http.get("https://api.test/api/v1/x", async ({ request }) => {
+        ct = request.headers.get("Content-Type");
+        raw = await request.text();
+        return HttpResponse.json({ ok: true });
+      })
+    );
+    const client = createClient(config);
+    await client.request({ host: "api", method: "GET", path: "/x" });
+    expect(ct).toBeNull();
+    expect(raw).toBe("");
+  });
 });
