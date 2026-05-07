@@ -101,7 +101,7 @@ describe("createClient", () => {
         new HttpResponse("oops", { status: 500 })
       )
     );
-    const client = createClient(config);
+    const client = createClient({ ...config, retryDelayMs: () => 0 });
     const err = await client.request({ host: "api", method: "GET", path: "/x" }).catch(e => e);
     expect(err).toBeInstanceOf(ClockifyError);
     expect((err as ClockifyError).status).toBe(500);
