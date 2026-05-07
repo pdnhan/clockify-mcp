@@ -163,3 +163,70 @@ describe("createClient", () => {
     expect(raw).toBe("");
   });
 });
+
+describe("createClient retry", () => {
+  it("retries 429 up to 3 times then succeeds", async () => {
+    let n = 0;
+    server.use(
+      http.get("https://api.test/api/v1/x", () => {
+        n += 1;
+        if (n < 3) return new HttpResponse(null, { status: 429 });
+        return HttpResponse.json({ ok: true });
+      })
+    );
+    const client = createClient({ ...config, retryDelayMs: () => 1 });
+    const out = await client.request<{ ok: boolean }>({
+      host: "api",
+      method: "GET",
+      path: "/x"
+    });
+    expect(out).toEqual({ ok: true });
+    expect(n).toBe(3);
+  });
+
+  it("surfaces 429 after exhausting retries", async () => {
+    server.use(
+      http.get("https://api.test/api/v1/x", () =>
+        new HttpResponse(null, { status: 429 })
+      )
+    );
+    const client = createClient({ ...config, retryDelayMs: () => 1 });
+    await expect(
+      client.request({ host: "api", method: "GET", path: "/x" })
+    ).rejects.toMatchObject({ status: 429 });
+  });
+
+  it("retries a 500 GET once", async () => {
+    let n = 0;
+    server.use(
+      http.get("https://api.test/api/v1/x", () => {
+        n += 1;
+        if (n === 1) return new HttpResponse("boom", { status: 500 });
+        return HttpResponse.json({ ok: true });
+      })
+    );
+    const client = createClient({ ...config, retryDelayMs: () => 1 });
+    const out = await client.request<{ ok: boolean }>({
+      host: "api",
+      method: "GET",
+      path: "/x"
+    });
+    expect(out).toEqual({ ok: true });
+    expect(n).toBe(2);
+  });
+
+  it("does not retry a 500 POST", async () => {
+    let n = 0;
+    server.use(
+      http.post("https://api.test/api/v1/x", () => {
+        n += 1;
+        return new HttpResponse("boom", { status: 500 });
+      })
+    );
+    const client = createClient({ ...config, retryDelayMs: () => 1 });
+    await expect(
+      client.request({ host: "api", method: "POST", path: "/x", body: {} })
+    ).rejects.toMatchObject({ status: 500 });
+    expect(n).toBe(1);
+  });
+});
