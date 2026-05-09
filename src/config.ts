@@ -1,10 +1,13 @@
 import { z } from "zod";
 
+const optionalUrl = (defaultUrl: string) =>
+  z.string().transform(v => v || defaultUrl).pipe(z.string().url()).default(defaultUrl);
+
 const Schema = z.object({
   CLOCKIFY_API_KEY: z.string().min(1),
   CLOCKIFY_WORKSPACE_ID: z.string().min(1),
-  CLOCKIFY_BASE_URL: z.string().url().default("https://api.clockify.me/api/v1"),
-  CLOCKIFY_REPORTS_BASE_URL: z.string().url().default("https://reports.api.clockify.me/v1"),
+  CLOCKIFY_BASE_URL: optionalUrl("https://api.clockify.me/api/v1"),
+  CLOCKIFY_REPORTS_BASE_URL: optionalUrl("https://reports.api.clockify.me/v1"),
   PORT: z.coerce.number().int().nonnegative().default(3000),
   LOG_LEVEL: z.enum(["error", "warn", "info", "debug"]).default("info")
 });
