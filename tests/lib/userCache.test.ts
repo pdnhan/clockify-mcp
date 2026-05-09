@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { createUserCache } from "../../src/lib/userCache.js";
 import type { User } from "../../src/clockify/types.js";
 import type { Client } from "../../src/clockify/client.js";
@@ -41,6 +41,31 @@ describe("createUserCache", () => {
     };
     const cache = createUserCache(client);
     await expect(cache.get()).rejects.toThrow("boom");
+    expect((await cache.get()).id).toBe("u1");
+    expect(n).toBe(2);
+  });
+
+  it("propagates rejection to all concurrent waiters and resets for retry", async () => {
+    let n = 0;
+    const client: Client = {
+      async request() {
+        n += 1;
+        if (n === 1) throw new Error("boom");
+        return { id: "u1" } as unknown;
+      }
+    };
+    const cache = createUserCache(client);
+
+    const [r1, r2, r3] = await Promise.allSettled([
+      cache.get(),
+      cache.get(),
+      cache.get()
+    ]);
+    expect(r1.status).toBe("rejected");
+    expect(r2.status).toBe("rejected");
+    expect(r3.status).toBe("rejected");
+    expect(n).toBe(1);
+
     expect((await cache.get()).id).toBe("u1");
     expect(n).toBe(2);
   });
