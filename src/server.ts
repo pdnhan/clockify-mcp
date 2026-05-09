@@ -22,16 +22,12 @@ export type StartedServer = {
   close(): Promise<void>;
 };
 
-export async function startServer(): Promise<StartedServer> {
-  const config = loadConfig();
-  const client = createClient({
-    apiKey: config.apiKey,
-    baseUrl: config.baseUrl,
-    reportsBaseUrl: config.reportsBaseUrl
-  });
-  const userCache = createUserCache(client);
-  const ctx: ToolContext = { client, config, userCache };
-
+/**
+ * Factory: creates a fresh McpServer with all 8 tool maps registered.
+ * Called once per /mcp request so each request gets its own isolated server
+ * instance (required by SDK 1.29 stateless transport semantics).
+ */
+function buildMcpServer(ctx: ToolContext): McpServer {
   const mcp = new McpServer({ name: "clockify-mcp", version: "0.1.0" });
   registerToolMaps(mcp, [
     workspacesTools(ctx),
@@ -43,13 +39,24 @@ export async function startServer(): Promise<StartedServer> {
     clientTools(ctx),
     reportTools(ctx)
   ]);
+  return mcp;
+}
 
-  // Omit sessionIdGenerator to enable stateless mode (it is optional in the SDK).
-  // Cast to Transport to satisfy exactOptionalPropertyTypes — the SDK's onclose
-  // getter/setter returns `(() => void) | undefined` but the Transport interface
-  // declares `onclose?: () => void`; they are structurally identical at runtime.
-  const transport = new StreamableHTTPServerTransport({});
-  await mcp.connect(transport as unknown as Transport);
+/** Returns true when the URL targets the /mcp endpoint (exact, sub-path, or query string). */
+function isMcpUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  return url === "/mcp" || url.startsWith("/mcp/") || url.startsWith("/mcp?");
+}
+
+export async function startServer(): Promise<StartedServer> {
+  const config = loadConfig();
+  const client = createClient({
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl,
+    reportsBaseUrl: config.reportsBaseUrl
+  });
+  const userCache = createUserCache(client);
+  const ctx: ToolContext = { client, config, userCache };
 
   const server = http.createServer((req, res) => {
     if (req.url === "/health") {
@@ -57,13 +64,38 @@ export async function startServer(): Promise<StartedServer> {
       res.end(JSON.stringify({ ok: true }));
       return;
     }
-    if (req.url?.startsWith("/mcp")) {
-      transport.handleRequest(req, res).catch((err) => {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: String(err) }));
+
+    if (isMcpUrl(req.url)) {
+      // Create a fresh transport + McpServer per request — SDK 1.29 stateless
+      // mode throws "Stateless transport cannot be reused across requests" if the
+      // same transport instance handles more than one request.
+      //
+      // Cast to Transport to satisfy exactOptionalPropertyTypes: the SDK's
+      // onclose getter returns `(() => void) | undefined` while Transport
+      // declares `onclose?: () => void`; they are structurally identical at
+      // runtime but differ in the TS optional-property encoding.
+      const transport = new StreamableHTTPServerTransport({});
+      const mcp = buildMcpServer(ctx);
+
+      // Tear down both objects as soon as the response stream closes,
+      // regardless of whether the handler finished normally or errored.
+      res.on("close", () => {
+        void transport.close();
+        void mcp.close();
       });
+
+      mcp
+        .connect(transport as unknown as Transport)
+        .then(() => transport.handleRequest(req, res))
+        .catch((err) => {
+          if (!res.headersSent) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: String(err) }));
+          }
+        });
       return;
     }
+
     res.writeHead(404);
     res.end();
   });
@@ -74,11 +106,11 @@ export async function startServer(): Promise<StartedServer> {
     http: server,
     port: config.port,
     async close() {
+      // Per-request transports/servers are cleaned up via res.on("close") in
+      // their own handlers; only the HTTP server needs explicit shutdown here.
       await new Promise<void>((resolve, reject) =>
         server.close((err) => (err ? reject(err) : resolve()))
       );
-      await transport.close();
-      await mcp.close();
     }
   };
 }
