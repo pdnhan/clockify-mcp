@@ -5,7 +5,7 @@ const Schema = z.object({
   CLOCKIFY_WORKSPACE_ID: z.string().min(1),
   CLOCKIFY_BASE_URL: z.string().url().default("https://api.clockify.me/api/v1"),
   CLOCKIFY_REPORTS_BASE_URL: z.string().url().default("https://reports.api.clockify.me/v1"),
-  PORT: z.coerce.number().int().positive().default(3000),
+  PORT: z.coerce.number().int().nonnegative().default(3000),
   LOG_LEVEL: z.enum(["error", "warn", "info", "debug"]).default("info")
 });
 

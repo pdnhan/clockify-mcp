@@ -102,9 +102,12 @@ export async function startServer(): Promise<StartedServer> {
 
   await new Promise<void>((resolve) => server.listen(config.port, resolve));
 
+  const addr = server.address();
+  const actualPort = typeof addr === "object" && addr ? addr.port : config.port;
+
   return {
     http: server,
-    port: config.port,
+    port: actualPort,
     async close() {
       // Per-request transports/servers are cleaned up via res.on("close") in
       // their own handlers; only the HTTP server needs explicit shutdown here.

@@ -65,10 +65,18 @@ describe("loadConfig", () => {
     expect(() => loadConfig()).toThrow(/CLOCKIFY_API_KEY/);
   });
 
-  it("rejects PORT=0 / negative / non-integer / non-numeric", () => {
+  it("accepts PORT=0 (ephemeral binding)", () => {
     process.env.CLOCKIFY_API_KEY = "k";
     process.env.CLOCKIFY_WORKSPACE_ID = "w";
-    for (const bad of ["0", "-1", "3.14", "abc"]) {
+    process.env.PORT = "0";
+    const cfg = loadConfig();
+    expect(cfg.port).toBe(0);
+  });
+
+  it("rejects negative / non-integer / non-numeric PORT values", () => {
+    process.env.CLOCKIFY_API_KEY = "k";
+    process.env.CLOCKIFY_WORKSPACE_ID = "w";
+    for (const bad of ["-1", "3.14", "abc"]) {
       process.env.PORT = bad;
       expect(() => loadConfig(), `PORT=${bad}`).toThrow(/PORT/);
     }
