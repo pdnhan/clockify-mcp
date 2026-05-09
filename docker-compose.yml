@@ -1,0 +1,15 @@
+services:
+  clockify-mcp:
+    build: .
+    image: clockify-mcp:latest
+    container_name: clockify-mcp
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      CLOCKIFY_API_KEY: ${CLOCKIFY_API_KEY}
+      CLOCKIFY_WORKSPACE_ID: ${CLOCKIFY_WORKSPACE_ID}
+      CLOCKIFY_BASE_URL: ${CLOCKIFY_BASE_URL:-}
+      CLOCKIFY_REPORTS_BASE_URL: ${CLOCKIFY_REPORTS_BASE_URL:-}
+      PORT: "3000"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    restart: unless-stopped
