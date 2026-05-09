@@ -1,5 +1,6 @@
 // tests/integration/smoke.test.ts
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
+import nodeHttp from "node:http";
 import { passthrough } from "msw";
 import { server, http, HttpResponse } from "../helpers/mockServer.js";
 import { startServer, type StartedServer } from "../../src/server.js";
@@ -93,5 +94,52 @@ describe("smoke", () => {
     });
     const text = json.result.content[0].text as string;
     expect(text).toContain("Acme");
+  });
+
+  it("rejects /mcp requests with a foreign Host header (DNS rebinding)", async () => {
+    // Node's fetch (undici) rewrites the Host header on the way out, so we
+    // drop down to node:http to actually attach Host: evil.com on the wire.
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = nodeHttp.request({
+        host: "127.0.0.1",
+        port: app.port,
+        path: "/mcp",
+        method: "POST",
+        headers: {
+          Host: "evil.com",
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream"
+        }
+      }, (res) => {
+        res.resume();
+        res.on("end", () => resolve(res.statusCode ?? 0));
+      });
+      req.on("error", reject);
+      req.end(JSON.stringify({
+        jsonrpc: "2.0",
+        id: 99,
+        method: "tools/list",
+        params: {}
+      }));
+    });
+    expect(status).toBe(403);
+  });
+
+  it("rejects /mcp requests with a foreign Origin header (DNS rebinding)", async () => {
+    const res = await fetch(`http://127.0.0.1:${app.port}/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        "Origin": "http://evil.com"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 100,
+        method: "tools/list",
+        params: {}
+      })
+    });
+    expect(res.status).toBe(403);
   });
 });

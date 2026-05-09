@@ -28,7 +28,7 @@ export type StartedServer = {
  * instance (required by SDK 1.29 stateless transport semantics).
  */
 function buildMcpServer(ctx: ToolContext): McpServer {
-  const mcp = new McpServer({ name: "clockify-mcp", version: "0.1.0" });
+  const mcp = new McpServer({ name: "clockify-mcp", version: "0.1.1" });
   registerToolMaps(mcp, [
     workspacesTools(ctx),
     timerTools(ctx),
@@ -58,6 +58,12 @@ export async function startServer(): Promise<StartedServer> {
   const userCache = createUserCache(client);
   const ctx: ToolContext = { client, config, userCache };
 
+  // Captured by the request handler so the DNS-rebinding allowlist always
+  // matches the *actually bound* port. config.port may be 0 (ephemeral) when
+  // tests ask the OS to pick a free port; the real port is only known after
+  // server.listen() returns.
+  let boundPort = config.port;
+
   const server = http.createServer((req, res) => {
     if (req.url === "/health") {
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -70,11 +76,26 @@ export async function startServer(): Promise<StartedServer> {
       // mode throws "Stateless transport cannot be reused across requests" if the
       // same transport instance handles more than one request.
       //
+      // DNS-rebinding protection: a malicious page on `evil.com` can rebind to
+      // 127.0.0.1 and POST to /mcp. The SDK validates Host + Origin headers
+      // against the allowlists below when enableDnsRebindingProtection is true.
+      // Allowlist matches the bound port — both 127.0.0.1 and localhost forms.
+      //
       // Cast to Transport to satisfy exactOptionalPropertyTypes: the SDK's
       // onclose getter returns `(() => void) | undefined` while Transport
       // declares `onclose?: () => void`; they are structurally identical at
       // runtime but differ in the TS optional-property encoding.
-      const transport = new StreamableHTTPServerTransport({});
+      const transport = new StreamableHTTPServerTransport({
+        enableDnsRebindingProtection: true,
+        allowedHosts: [
+          `127.0.0.1:${boundPort}`,
+          `localhost:${boundPort}`
+        ],
+        allowedOrigins: [
+          `http://127.0.0.1:${boundPort}`,
+          `http://localhost:${boundPort}`
+        ]
+      });
       const mcp = buildMcpServer(ctx);
 
       // Tear down both objects as soon as the response stream closes,
@@ -104,6 +125,9 @@ export async function startServer(): Promise<StartedServer> {
 
   const addr = server.address();
   const actualPort = typeof addr === "object" && addr ? addr.port : config.port;
+  // Update the closure used by the request handler so the rebinding allowlist
+  // includes the ephemeral port the OS picked.
+  boundPort = actualPort;
 
   return {
     http: server,
