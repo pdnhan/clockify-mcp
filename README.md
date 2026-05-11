@@ -32,7 +32,12 @@ Add to `claude_desktop_config.json`:
 {
   "mcpServers": {
     "clockify": {
-      "transport": { "type": "http", "url": "http://127.0.0.1:3000/mcp" }
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        "http://127.0.0.1:3000/mcp"
+      ]
     }
   }
 }
